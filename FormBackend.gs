@@ -1,0 +1,164 @@
+/**
+ * Backend สำหรับ "แบบประเมินทักษะวิชาชีพแห่งอนาคต (Future Skills : Digital)"
+ * รับข้อมูลจากฟอร์มเว็บ (future-skills-digital-form.html) แล้วบันทึกลง Google Sheet
+ * ----------------------------------------------------------------------
+ * วิธีติดตั้ง: ดูไฟล์ FORM_SETUP_GUIDE.md ที่แนบมาด้วย
+ */
+
+/** ====== ตั้งค่า ====== */
+const SHEET_NAME = 'ผลการประเมิน';
+
+// ต้องเรียงลำดับให้ตรงกับ DOMAINS ในไฟล์ future-skills-digital-form.html
+const DOMAINS = [
+  { key: 'digital',    label: 'ดิจิทัล',        count: 8 },
+  { key: 'automation', label: 'ระบบอัตโนมัติ',  count: 8 },
+  { key: 'green',      label: 'สิ่งแวดล้อม',    count: 8 },
+  { key: 'electrical', label: 'ไฟฟ้า',          count: 8 },
+  { key: 'computer',   label: 'คอมพิวเตอร์',   count: 8 }
+];
+
+/** ====== รับข้อมูลจากฟอร์ม (POST) ====== */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const sheet = getOrCreateSheet_();
+    const row = buildRow_(data);
+    sheet.appendRow(row);
+
+    if (data.email && data.resultImageBase64) {
+      sendResultImageEmail_(data);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'success' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/** ส่งภาพสเตตัสการ์ด (Base64 JPEG จากฟอร์ม) ไปที่อีเมลผู้กรอก ให้ดูผลย้อนหลังได้ */
+function sendResultImageEmail_(data) {
+  try {
+    const bytes = Utilities.base64Decode(data.resultImageBase64);
+    const blob = Utilities.newBlob(bytes, 'image/jpeg', 'future-skills-result.jpg');
+
+    const displayName = (data.prefix ? data.prefix + ' ' : '') + (data.name || '');
+    const subject = 'ผลการประเมิน FUTURE SKILLS · DIGITAL ของคุณ';
+    const htmlBody =
+      '<div style="font-family:Tahoma,sans-serif;max-width:480px;margin:0 auto;color:#362a4d;">' +
+      '<p>สวัสดีครับ/ค่ะ ' + escapeHtml_(displayName || 'ผู้เข้าร่วมประเมิน') + '</p>' +
+      '<p>นี่คือผลการประเมินทักษะวิชาชีพแห่งอนาคต (FUTURE SKILLS · DIGITAL) ของคุณ ' +
+      'เก็บอีเมลฉบับนี้ไว้เพื่อดูผลย้อนหลังได้ทุกเมื่อ</p>' +
+      '<img src="cid:resultImage" style="width:100%;border-radius:14px;display:block;margin:16px 0;" />' +
+      '<p style="color:#8a7f9c;font-size:12px;">สถาบันสหวิทยาการดิจิทัลและหุ่นยนต์</p>' +
+      '</div>';
+
+    MailApp.sendEmail({
+      to: data.email,
+      subject: subject,
+      htmlBody: htmlBody,
+      inlineImages: { resultImage: blob }
+    });
+  } catch (err) {
+    Logger.log('ส่งอีเมลรูปผลลัพธ์ไม่สำเร็จ: ' + err);
+  }
+}
+
+function escapeHtml_(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** ทดสอบว่า Web App ทำงานอยู่ (เปิดลิงก์ผ่านเบราว์เซอร์เพื่อเช็ก) */
+function doGet(e) {
+  return ContentService
+    .createTextOutput('Future Skills form backend is running.')
+    .setMimeType(ContentService.MimeType.TEXT);
+}
+
+/** สร้างหรือดึงชีตเป้าหมาย พร้อมเขียนหัวตารางถ้ายังไม่มี */
+function getOrCreateSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow(buildHeader_());
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function buildHeader_() {
+  const base = ['Timestamp', 'Email', 'คำนำหน้า', 'ชื่อ-นามสกุล', 'ตำแหน่ง/ระดับการศึกษา', 'โรงเรียน/มหาวิทยาลัย', 'วันที่ประเมิน'];
+  const scoreHeaders = [];
+  DOMAINS.forEach(function (d) {
+    for (let i = 1; i <= d.count; i++) {
+      scoreHeaders.push(d.label + ' ข้อ ' + i);
+    }
+  });
+  const totalsHeaders = DOMAINS.map(function (d) { return 'รวม: ' + d.label; });
+  return base.concat(scoreHeaders).concat(totalsHeaders);
+}
+
+/** แปลง payload จากฟอร์มให้เป็นแถวข้อมูลตามลำดับหัวตาราง */
+function buildRow_(data) {
+  const base = [
+    new Date(),
+    data.email || '',
+    data.prefix || '',
+    data.name || '',
+    data.position || '',
+    data.school || '',
+    data.assessDate || ''
+  ];
+
+  const scoreCells = [];
+  const totals = [];
+  DOMAINS.forEach(function (d) {
+    let sum = 0;
+    for (let i = 1; i <= d.count; i++) {
+      const key = d.key + '_' + i;
+      const val = (data.scores && data.scores[key] != null) ? Number(data.scores[key]) : '';
+      scoreCells.push(val);
+      sum += Number(val) || 0;
+    }
+    totals.push(sum);
+  });
+
+  return base.concat(scoreCells).concat(totals);
+}
+
+/** ====== ตัวช่วยทดสอบ: เรียกจากตัวแก้ไขสคริปต์ได้โดยตรง (ไม่ต้องผ่านฟอร์มจริง) ====== */
+function testDoPost() {
+  const fakeScores = {};
+  DOMAINS.forEach(function (d) {
+    for (let i = 1; i <= d.count; i++) {
+      fakeScores[d.key + '_' + i] = Math.ceil(Math.random() * 5);
+    }
+  });
+  // 1x1 px placeholder JPEG — just to exercise the email-sending code path in testing.
+  // Replace with a real base64 JPEG (e.g. logged from the browser console) to preview the actual email.
+  const placeholderImageBase64 = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=';
+
+  const fakeEvent = {
+    postData: {
+      contents: JSON.stringify({
+        email: 'test@example.com',
+        prefix: 'นาย',
+        name: 'ทดสอบ ระบบ',
+        position: 'มัธยมศึกษาตอนปลาย',
+        school: 'โรงเรียนทดสอบ',
+        assessDate: new Date().toISOString().slice(0, 10),
+        scores: fakeScores,
+        resultImageBase64: placeholderImageBase64
+      })
+    }
+  };
+  const result = doPost(fakeEvent);
+  Logger.log(result.getContent());
+}
