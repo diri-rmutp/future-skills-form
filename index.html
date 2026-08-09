@@ -1,202 +1,1000 @@
-/**
- * Backend สำหรับ "แบบประเมินทักษะวิชาชีพแห่งอนาคต (Future Skills : Digital)"
- * รับข้อมูลจากฟอร์มเว็บ (future-skills-digital-form.html) แล้วบันทึกลง Google Sheet
- * ----------------------------------------------------------------------
- * วิธีติดตั้ง: ดูไฟล์ FORM_SETUP_GUIDE.md ที่แนบมาด้วย
- */
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>แบบประเมินทักษะวิชาชีพแห่งอนาคต (Future Skills Digital)</title>
+<style>
+  html, body{
+    margin:0; padding:0; background:#f4f0fc;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body{
+    padding:18px 12px;
+    box-sizing:border-box;
+    min-height:100vh;
+  }
+  @media (min-width:820px){ body{ padding:32px 20px; } }
+  button, .fsd-radio, .fsd-navpill, .fsd-cutedd-btn, .fsd-cutedd-item{
+    touch-action:manipulation;
+  }
 
-/** ====== ตั้งค่า ====== */
-const SHEET_NAME = 'ผลการประเมิน';
-const IMAGE_FOLDER_NAME = 'Future Skills - รูปผลลัพธ์'; // โฟลเดอร์ใน Google Drive ที่จะเก็บรูปสเตตัสการ์ด
+  @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@500;600;700&family=Prompt:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 
-// ต้องเรียงลำดับให้ตรงกับ DOMAINS ในไฟล์ future-skills-digital-form.html
-const DOMAINS = [
-  { key: 'digital',    label: 'ดิจิทัล',        count: 8 },
-  { key: 'automation', label: 'ระบบอัตโนมัติ',  count: 8 },
-  { key: 'green',      label: 'สิ่งแวดล้อม',    count: 8 },
-  { key: 'electrical', label: 'ไฟฟ้า',          count: 8 },
-  { key: 'computer',   label: 'คอมพิวเตอร์',   count: 8 },
-  { key: 'softskill',  label: 'Soft Skill',      count: 8 }
-];
+  .fsd-root{
+    --bg:#f4f0fc;
+    --bg-soft:#efe9fb;
+    --shadow-d:rgba(163,150,209,0.45);
+    --shadow-l:rgba(255,255,255,0.9);
+    --cyan:#8b5cf6;
+    --violet:#c4b5fd;
+    --green:#10b981;
+    --amber:#f59e0b;
+    --pink:#c026d3;
+    --text:#362a4d;
+    --muted:#6b5f87;
+    --danger:#ef4444;
 
-/** ====== รับข้อมูลจากฟอร์ม (POST) ====== */
-function doPost(e) {
-  try {
-    const data = JSON.parse(e.postData.contents);
-    const sheet = getOrCreateSheet_();
+    font-family:'Prompt',sans-serif;
+    color:var(--text);
+    background:var(--bg);
+    border-radius:28px;
+    max-width:820px;
+    margin:0 auto;
+    padding:0;
+    overflow:hidden;
+    position:relative;
+  }
 
-    let imageUrl = '';
-    if (data.resultImageBase64) {
-      imageUrl = saveResultImageToDrive_(data);
+  .fsd-grid-overlay{ display:none; }
+
+  .fsd-inner{ position:relative; max-width:760px; margin:0 auto; padding:36px 20px 60px; }
+
+  /* ---------- neumorphic shadow helpers (applied inline per component) ---------- */
+  .fsd-raised{
+    box-shadow:9px 9px 18px var(--shadow-d), -9px -9px 18px var(--shadow-l);
+  }
+  .fsd-inset{
+    box-shadow:inset 5px 5px 10px var(--shadow-d), inset -5px -5px 10px var(--shadow-l);
+  }
+
+  /* ---------- hero ---------- */
+  .fsd-hero{ text-align:center; padding:10px 6px 26px; }
+  .fsd-inst-name{
+    font-family:'Kanit',sans-serif; font-weight:700; font-size:clamp(20px,4.2vw,29px);
+    color:var(--text); margin-bottom:12px; letter-spacing:.005em; line-height:1.3;
+    text-shadow:1px 1px 2px var(--shadow-d), -1px -1px 1px var(--shadow-l);
+  }
+  .fsd-eyebrow{
+    font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.2em;
+    color:var(--cyan); text-transform:uppercase; margin-bottom:16px;
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--bg); border-radius:20px; padding:7px 16px;
+    box-shadow:5px 5px 10px var(--shadow-d), -5px -5px 10px var(--shadow-l);
+  }
+  .fsd-title{
+    font-family:'Kanit',sans-serif; font-weight:600; font-size:clamp(15px,2.6vw,18px);
+    margin:0 0 10px; line-height:1.4; color:var(--muted);
+  }
+  .fsd-subtitle{ font-size:14px; color:var(--muted); max-width:480px; margin:0 auto; line-height:1.7; }
+
+  /* ---------- sticky progress groove ---------- */
+  .fsd-progress-shell{
+    position:sticky; top:0; z-index:20; padding:14px 20px 16px;
+    background:linear-gradient(180deg, var(--bg) 75%, transparent);
+  }
+  .fsd-progress-row{ max-width:760px; margin:0 auto; display:flex; align-items:center; gap:12px; }
+  .fsd-progress-track{
+    flex:1; height:12px; border-radius:8px; background:var(--bg); position:relative; overflow:hidden;
+    box-shadow:inset 3px 3px 6px var(--shadow-d), inset -3px -3px 6px var(--shadow-l);
+  }
+  .fsd-progress-fill{
+    height:100%; width:0%; border-radius:8px; margin:2px;
+    background:linear-gradient(90deg,var(--violet),var(--cyan));
+    box-shadow:0 0 10px rgba(139,92,246,0.45);
+    transition:width .35s ease;
+  }
+  .fsd-progress-pct{ font-family:'Space Mono',monospace; font-size:12px; color:var(--cyan); min-width:40px; text-align:right; }
+
+  /* ---------- section nav pills ---------- */
+  .fsd-navpills{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin:6px 0 30px; }
+  .fsd-navpill{
+    font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.03em;
+    padding:8px 14px; border-radius:20px; border:none;
+    color:var(--muted); cursor:pointer; background:var(--bg);
+    box-shadow:5px 5px 10px var(--shadow-d), -5px -5px 10px var(--shadow-l);
+    transition:all .15s ease; text-decoration:none;
+  }
+  .fsd-navpill:hover{ color:var(--text); }
+  .fsd-navpill.done{
+    color:var(--cyan);
+    box-shadow:inset 3px 3px 6px var(--shadow-d), inset -3px -3px 6px var(--shadow-l);
+  }
+
+  /* ---------- timeline connector ---------- */
+  .fsd-track{ position:relative; }
+  .fsd-track::before{
+    content:''; position:absolute; left:20px; top:14px; bottom:14px; width:2px;
+    border-radius:2px;
+    background:var(--bg);
+    box-shadow:inset 1px 1px 2px var(--shadow-d), inset -1px -1px 2px var(--shadow-l);
+  }
+
+  /* ---------- cards ---------- */
+  .fsd-card{
+    position:relative; margin:0 0 26px 46px;
+    background:var(--bg); border:none; border-radius:22px;
+    padding:24px 24px 10px;
+    box-shadow:9px 9px 18px var(--shadow-d), -9px -9px 18px var(--shadow-l);
+  }
+  .fsd-node{
+    position:absolute; left:-35px; top:26px; width:14px; height:14px; border-radius:50%;
+    background:var(--bg);
+    box-shadow:3px 3px 6px var(--shadow-d), -3px -3px 6px var(--shadow-l);
+  }
+  .fsd-node::after{
+    content:''; position:absolute; inset:3px; border-radius:50%; background:var(--cyan); opacity:.25;
+  }
+  .fsd-node.node-done{ box-shadow:inset 2px 2px 4px var(--shadow-d), inset -2px -2px 4px var(--shadow-l); }
+  .fsd-node.node-done::after{ opacity:1; box-shadow:0 0 8px var(--cyan); }
+
+  .fsd-card h2{
+    font-family:'Kanit',sans-serif; font-size:17px; font-weight:600; margin:0 0 4px;
+    color:var(--text); display:flex; align-items:center; gap:8px;
+  }
+  .fsd-card .fsd-card-sub{ font-size:12px; color:var(--muted); margin-bottom:18px; }
+  .fsd-domain-tag{
+    font-family:'Space Mono',monospace; font-size:10px; padding:3px 10px; border-radius:10px;
+    letter-spacing:.05em; background:var(--bg);
+    box-shadow:inset 2px 2px 4px var(--shadow-d), inset -2px -2px 4px var(--shadow-l);
+  }
+
+  /* ---------- form fields (personal info) ---------- */
+  .fsd-field{ margin-bottom:18px; }
+  .fsd-field label{
+    display:block; font-size:12.5px; color:var(--muted); margin-bottom:8px; letter-spacing:.01em;
+  }
+  .fsd-field label .req{ color:var(--danger); }
+  .fsd-input, .fsd-select{
+    width:100%; box-sizing:border-box; font-family:'Prompt',sans-serif; font-size:14px;
+    background:var(--bg); border:none; border-radius:12px;
+    padding:12px 14px; color:var(--text); outline:none;
+    box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l);
+    transition:box-shadow .15s ease;
+  }
+  .fsd-input::placeholder{ color:#5c6376; }
+  .fsd-input:focus, .fsd-select:focus{
+    box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l), 0 0 0 2px rgba(139,92,246,0.32);
+  }
+  .fsd-select option{ background:var(--bg); color:var(--text); }
+  .fsd-row2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:560px){ .fsd-row2{ grid-template-columns:1fr; } }
+  .fsd-prefix-other{ margin-top:10px; display:none; }
+  .fsd-prefix-other.show{ display:block; }
+
+  /* ---------- cute custom dropdown (คำนำหน้า) ---------- */
+  .fsd-cutedd{ position:relative; }
+  .fsd-cutedd-btn{
+    width:100%; box-sizing:border-box; display:flex; align-items:center; gap:9px;
+    font-family:'Prompt',sans-serif; font-size:14px; text-align:left;
+    background:var(--bg); border:none; border-radius:16px; cursor:pointer;
+    padding:12px 14px; color:var(--text);
+    box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l);
+    transition:box-shadow .15s ease;
+  }
+  .fsd-cutedd-btn:hover{ box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l), 0 0 0 2px rgba(244,114,182,0.25); }
+  .fsd-cutedd.open .fsd-cutedd-btn{ box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l), 0 0 0 2px rgba(244,114,182,0.4); }
+  .fsd-cutedd-btn.fsd-cutedd-error{ box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l), 0 0 0 2px rgba(248,113,113,0.55); animation:fsdShake .35s ease; }
+  @keyframes fsdShake{
+    0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-4px); } 75%{ transform:translateX(4px); }
+  }
+  .fsd-cutedd-emoji{ font-size:16px; line-height:1; filter:drop-shadow(0 0 4px rgba(244,114,182,0.35)); }
+  .fsd-cutedd-text{ flex:1; color:var(--muted); }
+  .fsd-cutedd.has-value .fsd-cutedd-text{ color:var(--text); }
+  .fsd-cutedd-arrow{
+    font-size:11px; color:var(--pink); transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+  }
+  .fsd-cutedd.open .fsd-cutedd-arrow{ transform:rotate(180deg); }
+
+  .fsd-cutedd-menu{
+    position:absolute; left:0; right:0; top:calc(100% + 10px); z-index:30;
+    background:var(--bg); border-radius:18px; padding:8px;
+    box-shadow:9px 9px 18px var(--shadow-d), -9px -9px 18px var(--shadow-l);
+    opacity:0; visibility:hidden; transform:translateY(-8px) scale(.97);
+    transform-origin:top center;
+    transition:opacity .18s ease, transform .22s cubic-bezier(.34,1.56,.64,1), visibility .18s;
+  }
+  .fsd-cutedd.open .fsd-cutedd-menu{ opacity:1; visibility:visible; transform:translateY(0) scale(1); }
+  .fsd-cutedd-item{
+    display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--text);
+    padding:10px 12px; border-radius:12px; cursor:pointer; position:relative;
+    transition:background .15s ease, transform .12s ease;
+  }
+  .fsd-cutedd-item:hover{ background:rgba(244,114,182,0.12); transform:translateX(2px); }
+  .fsd-cutedd-item-emoji{ font-size:15px; }
+  .fsd-cutedd-check{ margin-left:auto; color:var(--pink); opacity:0; font-size:12px; transition:opacity .15s ease; }
+  .fsd-cutedd-item.selected{ background:rgba(244,114,182,0.16); color:var(--pink); }
+  .fsd-cutedd-item.selected .fsd-cutedd-check{ opacity:1; }
+
+  /* ---------- likert rows ---------- */
+  .fsd-likert-head{
+    display:grid; grid-template-columns:1fr 190px; gap:10px; font-family:'Space Mono',monospace;
+    font-size:9.5px; color:var(--muted); padding:0 0 8px; letter-spacing:.03em;
+  }
+  .fsd-scale-labels{ display:flex; justify-content:space-between; padding:0 3px; }
+  .fsd-litem{
+    display:grid; grid-template-columns:1fr 190px; gap:10px; align-items:center;
+    padding:14px 0;
+  }
+  .fsd-litem-text{ font-size:13px; line-height:1.55; color:var(--text); }
+  .fsd-litem-text .qnum{ font-family:'Space Mono',monospace; color:var(--muted); margin-right:6px; }
+  .fsd-scale{ display:flex; justify-content:space-between; gap:6px; }
+  .fsd-radio{
+    width:32px; height:32px; border-radius:50%; border:none;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    font-family:'Space Mono',monospace; font-size:11px; color:var(--muted);
+    background:var(--bg); transition:all .15s ease; position:relative;
+    box-shadow:4px 4px 8px var(--shadow-d), -4px -4px 8px var(--shadow-l);
+  }
+  .fsd-radio input{ position:absolute; opacity:0; inset:0; margin:0; cursor:pointer; }
+  .fsd-radio:hover{ color:var(--text); }
+  .fsd-radio.checked{
+    background:var(--bg); color:var(--cyan); font-weight:700;
+    box-shadow:inset 3px 3px 6px var(--shadow-d), inset -3px -3px 6px var(--shadow-l), 0 0 10px rgba(139,92,246,0.35);
+  }
+  @media (max-width:560px){
+    .fsd-likert-head{ display:none; }
+    .fsd-litem{ grid-template-columns:1fr; gap:10px; }
+    .fsd-scale{ justify-content:space-between; }
+    .fsd-card{ margin-left:30px; padding:20px 16px 8px; }
+    .fsd-node{ left:-24px; width:12px; height:12px; }
+    .fsd-submit-card{ margin-left:30px; padding:24px 10px 26px; }
+    .fsd-track::before{ left:14px; }
+    .fsd-inner{ padding:24px 12px 44px; }
+  }
+
+  /* ---------- submit ---------- */
+  .fsd-submit-card{ margin-left:46px; text-align:center; padding:28px 20px 30px; }
+  .fsd-submit-btn{
+    font-family:'Kanit',sans-serif; font-weight:600; font-size:15px; letter-spacing:.02em;
+    color:var(--cyan); background:var(--bg);
+    border:none; border-radius:14px; padding:15px 36px; cursor:pointer;
+    box-shadow:8px 8px 16px var(--shadow-d), -8px -8px 16px var(--shadow-l);
+    transition:box-shadow .15s ease, transform .15s ease;
+  }
+  .fsd-submit-btn:hover{ transform:translateY(-1px); }
+  .fsd-submit-btn:active{ box-shadow:inset 4px 4px 8px var(--shadow-d), inset -4px -4px 8px var(--shadow-l); transform:none; }
+  .fsd-submit-btn:disabled{ opacity:.5; cursor:not-allowed; transform:none; }
+  .fsd-status{ margin-top:16px; font-size:13px; min-height:18px; }
+  .fsd-status.ok{ color:var(--green); }
+  .fsd-status.err{ color:var(--danger); }
+  .fsd-status.pending{ color:var(--muted); }
+
+  .fsd-hint{ font-size:11.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
+  .fsd-hint code{ color:var(--cyan); }
+
+  /* ---------- status card (shown after submit) ---------- */
+  .fsd-results{ display:none; }
+  .fsd-results.show{ display:block; }
+  .fsd-results-head{ text-align:center; padding:6px 6px 26px; }
+  .fsd-results-eyebrow{
+    font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.2em;
+    color:var(--green); text-transform:uppercase; margin-bottom:16px;
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--bg); border-radius:20px; padding:7px 16px;
+    box-shadow:5px 5px 10px var(--shadow-d), -5px -5px 10px var(--shadow-l);
+  }
+  .fsd-results-title{
+    font-family:'Kanit',sans-serif; font-weight:700; font-size:clamp(19px,4.5vw,26px);
+    margin:0 0 8px; color:var(--text);
+  }
+  .fsd-results-sub{ font-size:13px; color:var(--muted); }
+
+  .fsd-sc-grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px; }
+  @media (max-width:680px){ .fsd-sc-grid{ grid-template-columns:1fr; } }
+
+  .fsd-sc-panel{
+    background:var(--bg); border-radius:22px;
+    padding:20px 20px 12px;
+    box-shadow:9px 9px 18px var(--shadow-d), -9px -9px 18px var(--shadow-l);
+  }
+  .fsd-sc-panel h3{
+    font-family:'Kanit',sans-serif; font-size:14px; margin:0 0 14px; color:var(--text);
+    letter-spacing:.02em;
+  }
+  .fsd-sc-row{
+    display:grid; grid-template-columns:auto 34px 1fr; align-items:center; gap:10px;
+    padding:8px 0;
+  }
+  .fsd-sc-label{ font-size:11.5px; color:var(--muted); white-space:nowrap; }
+  .fsd-sc-value{ font-family:'Space Mono',monospace; font-size:12px; color:var(--text); text-align:right; }
+  .fsd-sc-track{
+    height:9px; border-radius:6px; background:var(--bg); overflow:hidden;
+    box-shadow:inset 2px 2px 4px var(--shadow-d), inset -2px -2px 4px var(--shadow-l);
+  }
+  .fsd-sc-fill{ height:100%; border-radius:6px; margin:1px; transition:width .5s ease; }
+  .fsd-sc-total{
+    display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:14px;
+    font-family:'Space Mono',monospace; font-size:12px; color:var(--cyan);
+  }
+
+  .fsd-radar-panel{
+    background:var(--bg);
+    border-radius:22px; padding:16px;
+    box-shadow:9px 9px 18px var(--shadow-d), -9px -9px 18px var(--shadow-l);
+    display:flex; align-items:center; justify-content:center; min-height:300px;
+  }
+  .fsd-radar-panel svg{ width:100%; height:auto; max-width:380px; }
+
+  .fsd-sc-advice{
+    background:var(--bg); border-radius:22px;
+    padding:20px 22px;
+    box-shadow:9px 9px 18px var(--shadow-d), -9px -9px 18px var(--shadow-l);
+  }
+  .fsd-sc-summary{ font-size:13px; line-height:1.7; color:var(--muted); margin-bottom:16px; }
+  .fsd-sc-summary b{ color:var(--text); }
+  .fsd-sc-item{ padding:12px 0; }
+  .fsd-sc-item-head{ font-family:'Kanit',sans-serif; font-size:13.5px; color:var(--text); margin-bottom:6px; }
+  .fsd-sc-item-head .pct{ font-family:'Space Mono',monospace; font-size:11px; color:var(--muted); font-weight:400; }
+  .fsd-sc-sub{ font-size:12px; line-height:1.7; color:var(--muted); }
+  .fsd-sc-sub b{ color:var(--cyan); font-weight:600; }
+
+  .fsd-restart-btn{
+    display:block; margin:24px auto 4px; font-family:'Space Mono',monospace; font-size:11.5px;
+    background:var(--bg); border:none; color:var(--muted);
+    padding:10px 20px; border-radius:20px; cursor:pointer; transition:all .15s ease;
+    box-shadow:5px 5px 10px var(--shadow-d), -5px -5px 10px var(--shadow-l);
+  }
+  .fsd-restart-btn:hover{ color:var(--text); }
+  .fsd-restart-btn:active{ box-shadow:inset 3px 3px 6px var(--shadow-d), inset -3px -3px 6px var(--shadow-l); }
+</style>
+</head>
+<body>
+
+<div class="fsd-root">
+  <div class="fsd-grid-overlay"></div>
+  <div class="fsd-inner">
+
+    <div class="fsd-hero">
+      <div class="fsd-inst-name">สถาบันสหวิทยาการดิจิทัลและหุ่นยนต์</div>
+      <div class="fsd-eyebrow">FUTURE SKILLS · DIGITAL</div>
+      <h1 class="fsd-title">แบบประเมินทักษะวิชาชีพแห่งอนาคต</h1>
+      <p class="fsd-subtitle">ประเมินความพร้อมของคุณใน 6 ด้าน — ดิจิทัล ระบบอัตโนมัติ สิ่งแวดล้อม ไฟฟ้า คอมพิวเตอร์ และ Soft Skill ใช้เวลาประมาณ 12 นาที</p>
+    </div>
+
+    <div class="fsd-navpills" id="fsdNavPills"></div>
+
+    <form id="fsdForm">
+      <div class="fsd-track">
+
+        <!-- personal info -->
+        <div class="fsd-card" id="sec-info">
+          <div class="fsd-node" id="node-info"></div>
+          <h2>ข้อมูลผู้ทำแบบประเมิน</h2>
+          <div class="fsd-card-sub">กรอกข้อมูลให้ครบก่อนเริ่มทำแบบประเมิน</div>
+
+          <div class="fsd-field">
+            <label>อีเมล <span class="req">*</span></label>
+            <input class="fsd-input" type="email" id="f_email" placeholder="name@example.com" required>
+          </div>
+
+          <div class="fsd-row2">
+            <div class="fsd-field">
+              <label>คำนำหน้า <span class="req">*</span></label>
+              <div class="fsd-cutedd" id="prefixDropdown">
+                <button type="button" class="fsd-cutedd-btn" id="prefixDropdownBtn">
+                  <span class="fsd-cutedd-emoji" id="prefixDropdownEmoji">💫</span>
+                  <span class="fsd-cutedd-text" id="prefixDropdownText">เลือกคำนำหน้า</span>
+                  <span class="fsd-cutedd-arrow">﹀</span>
+                </button>
+                <div class="fsd-cutedd-menu" id="prefixDropdownMenu">
+                  <div class="fsd-cutedd-item" data-value="นาย" data-emoji="🧑">
+                    <span class="fsd-cutedd-item-emoji">🧑</span>
+                    <span class="fsd-cutedd-item-label">นาย</span>
+                    <span class="fsd-cutedd-check">♥</span>
+                  </div>
+                  <div class="fsd-cutedd-item" data-value="นางสาว" data-emoji="👩">
+                    <span class="fsd-cutedd-item-emoji">👩</span>
+                    <span class="fsd-cutedd-item-label">นางสาว</span>
+                    <span class="fsd-cutedd-check">♥</span>
+                  </div>
+                  <div class="fsd-cutedd-item" data-value="นาง" data-emoji="👩‍🦰">
+                    <span class="fsd-cutedd-item-emoji">👩‍🦰</span>
+                    <span class="fsd-cutedd-item-label">นาง</span>
+                    <span class="fsd-cutedd-check">♥</span>
+                  </div>
+                  <div class="fsd-cutedd-item" data-value="อื่นๆ" data-emoji="✨">
+                    <span class="fsd-cutedd-item-emoji">✨</span>
+                    <span class="fsd-cutedd-item-label">อื่นๆ ระบุ</span>
+                    <span class="fsd-cutedd-check">♥</span>
+                  </div>
+                </div>
+              </div>
+              <input type="hidden" id="f_prefix" value="">
+              <div class="fsd-prefix-other" id="prefixOtherWrap">
+                <input class="fsd-input" type="text" id="f_prefix_other" placeholder="ระบุคำนำหน้า">
+              </div>
+            </div>
+            <div class="fsd-field">
+              <label>ชื่อ - นามสกุล <span class="req">*</span></label>
+              <input class="fsd-input" type="text" id="f_name" placeholder="ชื่อ นามสกุล" required>
+            </div>
+          </div>
+
+          <div class="fsd-row2">
+            <div class="fsd-field">
+              <label>ตำแหน่ง / ระดับการศึกษา <span class="req">*</span></label>
+              <input class="fsd-input" type="text" id="f_position" list="positionList" placeholder="เช่น มัธยมศึกษาตอนปลาย, ปวช., ครู" required>
+              <datalist id="positionList">
+                <option value="มัธยมศึกษาตอนต้น">
+                <option value="มัธยมศึกษาตอนปลาย">
+                <option value="ปวช.">
+                <option value="ปวส.">
+                <option value="ปริญญาตรี">
+                <option value="ปริญญาโท">
+                <option value="ครู/บุคลากรทางการศึกษา">
+              </datalist>
+            </div>
+            <div class="fsd-field">
+              <label>โรงเรียน / มหาวิทยาลัย <span class="req">*</span></label>
+              <input class="fsd-input" type="text" id="f_school" placeholder="ชื่อสถาบัน" required>
+            </div>
+          </div>
+
+          <div class="fsd-field">
+            <label>วันที่ประเมิน <span class="req">*</span></label>
+            <input class="fsd-input" type="date" id="f_date" required>
+          </div>
+        </div>
+
+        <!-- domain sections injected by JS -->
+        <div id="fsdDomains"></div>
+
+      </div>
+
+      <div class="fsd-submit-card">
+        <button type="submit" class="fsd-submit-btn" id="fsdSubmitBtn">ส่งแบบประเมิน</button>
+        <div class="fsd-status" id="fsdStatus"></div>
+        <div class="fsd-hint">ข้อมูลของคุณจะถูกบันทึกลง Google Sheet ของผู้ดูแลระบบเท่านั้น</div>
+      </div>
+
+    </form>
+
+    <!-- status card results view (shown after successful submit) -->
+    <div class="fsd-results" id="fsdResults">
+      <div class="fsd-results-head">
+        <div class="fsd-results-eyebrow">RESULT · READY</div>
+        <h2 class="fsd-results-title" id="fsdResultsTitle">สเตตัสทักษะของคุณ</h2>
+        <p class="fsd-results-sub" id="fsdResultsSub"></p>
+      </div>
+
+      <div class="fsd-sc-grid">
+        <div class="fsd-sc-panel">
+          <h3>BASE STATS</h3>
+          <div id="fsdScBars"></div>
+          <div class="fsd-sc-total" id="fsdScTotal"></div>
+        </div>
+        <div class="fsd-radar-panel">
+          <svg id="fsdRadarSvg" viewBox="0 0 380 380"></svg>
+        </div>
+      </div>
+
+      <div class="fsd-sc-advice" id="fsdScAdvice"></div>
+
+      <button type="button" class="fsd-restart-btn" id="fsdRestartBtn">← ทำแบบประเมินอีกครั้ง</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+(function(){
+  var root = document.querySelector('.fsd-root');
+
+  // ===== ตั้งค่าตรงนี้: ใส่ URL ของ Google Apps Script Web App หลัง Deploy =====
+  var WEB_APP_URL = 'PASTE_YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+  var DOMAINS = [
+    {
+      key:'digital', label:'ด้านดิจิทัล', tag:'DIGITAL', color:'#8b5cf6',
+      items:[
+        'ใช้โปรแกรม Word, Excel, PowerPoint ทำงานได้คล่อง',
+        'เขียนโค้ดหรือเขียนโปรแกรมง่าย ๆ ได้ (เช่น Python, Scratch)',
+        'รู้ว่า AI และ Machine Learning ทำงานอย่างไรเบื้องต้น',
+        'ใช้เครื่องมือดิจิทัลค้นหา วิเคราะห์ และนำเสนอข้อมูลได้',
+        'รู้วิธีป้องกันตัวเองจากภัยไซเบอร์เบื้องต้น',
+        'ใช้ระบบคลาวด์และทำงานร่วมกับผู้อื่นแบบออนไลน์ได้',
+        'ออกแบบเว็บไซต์หรือแอปพลิเคชันง่าย ๆ ได้',
+        'เข้าใจว่าอุปกรณ์ที่เชื่อมต่ออินเทอร์เน็ต (IoT) ทำงานอย่างไร'
+      ]
+    },
+    {
+      key:'automation', label:'ด้านระบบอัตโนมัติ', tag:'AUTOMATION', color:'#6366f1',
+      items:[
+        'รู้ว่าเซนเซอร์และอุปกรณ์อิเล็กทรอนิกส์ทำงานอย่างไรเบื้องต้น',
+        'ประกอบวงจรและเขียนโปรแกรมควบคุมหุ่นยนต์ได้ (เช่น Arduino, micro:bit)',
+        'เข้าใจหลักการออกแบบกลไกของหุ่นยนต์เบื้องต้น',
+        'หาสาเหตุและแก้ปัญหาเวลาเครื่องจักรอัตโนมัติทำงานผิดพลาดได้',
+        'เข้าใจว่าฮาร์ดแวร์กับซอฟต์แวร์ทำงานร่วมกันอย่างไร',
+        'ทำงานร่วมกับผู้อื่นในโครงงานหุ่นยนต์หรือระบบอัตโนมัติได้ดี',
+        'นำความรู้เรื่องระบบอัตโนมัติไปใช้แก้ปัญหาในชีวิตจริงได้',
+        'ดูแลรักษาและตรวจเช็คสภาพหุ่นยนต์หรืออุปกรณ์ให้พร้อมใช้งานได้'
+      ]
+    },
+    {
+      key:'green', label:'ด้านทักษะและความตระหนักด้านสิ่งแวดล้อม', tag:'GREEN', color:'#10b981',
+      items:[
+        'รู้ว่าคาร์บอนฟุตพริ้นท์คืออะไร และส่งผลต่อสิ่งแวดล้อมอย่างไร',
+        'คำนวณหรือประเมินคาร์บอนฟุตพริ้นท์ของกิจกรรม/สินค้าได้เบื้องต้น',
+        'รู้จักเทคโนโลยีสีเขียวและพลังงานหมุนเวียน',
+        'เสนอไอเดียลดการใช้พลังงานด้วยเทคโนโลยีดิจิทัลหรือหุ่นยนต์ได้',
+        'เข้าใจแนวคิดเศรษฐกิจหมุนเวียน คือการใช้ทรัพยากรให้คุ้มค่าและไม่ทิ้งขว้าง',
+        'นำ IoT หรือ AI มาช่วยจัดการพลังงานอย่างยั่งยืนได้',
+        'ใช้ชีวิตประจำวันโดยคำนึงถึงสิ่งแวดล้อม',
+        'เลือกใช้วัสดุหรือทรัพยากรที่เป็นมิตรต่อสิ่งแวดล้อมในการทำงานหรือโครงงาน'
+      ]
+    },
+    {
+      key:'electrical', label:'ด้านไฟฟ้า', tag:'ELECTRICAL', color:'#f59e0b',
+      items:[
+        'เข้าใจวงจรไฟฟ้ากระแสตรงและกระแสสลับเบื้องต้น',
+        'อ่านและเขียนแบบวงจรไฟฟ้าง่าย ๆ ได้',
+        'ติดตั้งและดูแลระบบไฟฟ้าเบื้องต้นได้',
+        'รู้วิธีใช้อุปกรณ์ไฟฟ้าและเครื่องมือวัดไฟฟ้า',
+        'ระมัดระวังความปลอดภัยเวลาทำงานเกี่ยวกับไฟฟ้า',
+        'เลือกใช้สายไฟและอุปกรณ์ป้องกันไฟฟ้าได้อย่างเหมาะสม',
+        'ตรวจสอบและแก้ไขปัญหาไฟฟ้าขัดข้องเบื้องต้นได้',
+        'เข้าใจการต่อวงจรไฟฟ้าในบ้านหรืออาคารเบื้องต้น'
+      ]
+    },
+    {
+      key:'computer', label:'ด้านคอมพิวเตอร์', tag:'COMPUTER', color:'#d946ef',
+      items:[
+        'เข้าใจว่าคอมพิวเตอร์ทำงานอย่างไรเบื้องต้น (ฮาร์ดแวร์)',
+        'เขียนโปรแกรมและจัดการข้อมูล/อัลกอริทึมได้',
+        'ออกแบบระบบสมองกลฝังตัวเบื้องต้นได้ (Embedded System)',
+        'ออกแบบฐานข้อมูลง่าย ๆ ได้',
+        'เข้าใจเครือข่ายคอมพิวเตอร์และระบบปฏิบัติการเบื้องต้น',
+        'ติดตั้งและดูแลระบบปฏิบัติการคอมพิวเตอร์เบื้องต้นได้',
+        'เข้าใจหลักการเก็บและจัดการข้อมูลอย่างปลอดภัย',
+        'แก้ไขปัญหาคอมพิวเตอร์หรือระบบขัดข้องเบื้องต้นได้'
+      ]
+    },
+    {
+      key:'softskill', label:'ด้าน Soft Skill', tag:'SOFT SKILL', color:'#fb7185',
+      items:[
+        'สื่อสารความคิดของตนเองให้ผู้อื่นเข้าใจได้ชัดเจน',
+        'รับฟังความคิดเห็นของผู้อื่นอย่างตั้งใจ',
+        'ทำงานร่วมกับผู้อื่นเป็นทีมได้ดี',
+        'บริหารเวลาและจัดลำดับความสำคัญของงานได้',
+        'ปรับตัวเข้ากับสถานการณ์หรือการเปลี่ยนแปลงได้ดี',
+        'แก้ไขปัญหาเฉพาะหน้าได้อย่างมีเหตุผล',
+        'มีความรับผิดชอบและตรงต่อเวลา',
+        'มีภาวะผู้นำและกล้าตัดสินใจ'
+      ]
     }
-
-    const row = buildRow_(data, imageUrl);
-    sheet.appendRow(row);
-
-    if (data.email && data.resultImageBase64) {
-      sendResultImageEmail_(data);
-    }
-
-    return ContentService
-      .createTextOutput(JSON.stringify({ status: 'success' }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ status: 'error', message: String(err) }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-/** บันทึกรูปสเตตัสการ์ด (Base64 JPEG) ลง Google Drive แล้วคืนลิงก์เปิดดูรูป */
-function saveResultImageToDrive_(data) {
-  try {
-    const folder = getOrCreateImageFolder_();
-    const bytes = Utilities.base64Decode(data.resultImageBase64);
-
-    const safeName = String(data.name || 'unknown').replace(/[^a-zA-Zก-๙0-9]/g, '_');
-    const fileName = 'result_' + safeName + '_' + new Date().getTime() + '.jpg';
-
-    const blob = Utilities.newBlob(bytes, 'image/jpeg', fileName);
-    const file = folder.createFile(blob);
-
-    // เปิดให้ดูได้ผ่านลิงก์ (ไม่ต้องล็อกอิน) — จำเป็นถ้าจะเปิดลิงก์จากภายนอกหรือใช้ในสูตร IMAGE()
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-    return file.getUrl();
-  } catch (err) {
-    Logger.log('บันทึกรูปลง Drive ไม่สำเร็จ: ' + err);
-    return '';
-  }
-}
-
-/** สร้างหรือดึงโฟลเดอร์เป้าหมายใน Drive สำหรับเก็บรูปผลลัพธ์ */
-function getOrCreateImageFolder_() {
-  const folders = DriveApp.getFoldersByName(IMAGE_FOLDER_NAME);
-  if (folders.hasNext()) return folders.next();
-  return DriveApp.createFolder(IMAGE_FOLDER_NAME);
-}
-
-/** ส่งภาพสเตตัสการ์ด (Base64 JPEG จากฟอร์ม) ไปที่อีเมลผู้กรอก ให้ดูผลย้อนหลังได้ */
-function sendResultImageEmail_(data) {
-  try {
-    const bytes = Utilities.base64Decode(data.resultImageBase64);
-    const blob = Utilities.newBlob(bytes, 'image/jpeg', 'future-skills-result.jpg');
-
-    const displayName = (data.prefix ? data.prefix + ' ' : '') + (data.name || '');
-    const subject = 'ผลการประเมิน FUTURE SKILLS · DIGITAL ของคุณ';
-    const htmlBody =
-      '<div style="font-family:Tahoma,sans-serif;max-width:480px;margin:0 auto;color:#362a4d;">' +
-      '<p>สวัสดีครับ/ค่ะ ' + escapeHtml_(displayName || 'ผู้เข้าร่วมประเมิน') + '</p>' +
-      '<p>นี่คือผลการประเมินทักษะวิชาชีพแห่งอนาคต (FUTURE SKILLS · DIGITAL) ของคุณ ' +
-      'เก็บอีเมลฉบับนี้ไว้เพื่อดูผลย้อนหลังได้ทุกเมื่อ</p>' +
-      '<img src="cid:resultImage" style="width:100%;border-radius:14px;display:block;margin:16px 0;" />' +
-      '<p style="color:#8a7f9c;font-size:12px;">สถาบันสหวิทยาการดิจิทัลและหุ่นยนต์</p>' +
-      '</div>';
-
-    MailApp.sendEmail({
-      to: data.email,
-      subject: subject,
-      htmlBody: htmlBody,
-      inlineImages: { resultImage: blob }
-    });
-  } catch (err) {
-    Logger.log('ส่งอีเมลรูปผลลัพธ์ไม่สำเร็จ: ' + err);
-  }
-}
-
-function escapeHtml_(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/** ทดสอบว่า Web App ทำงานอยู่ (เปิดลิงก์ผ่านเบราว์เซอร์เพื่อเช็ก) */
-function doGet(e) {
-  return ContentService
-    .createTextOutput('Future Skills form backend is running.')
-    .setMimeType(ContentService.MimeType.TEXT);
-}
-
-/** สร้างหรือดึงชีตเป้าหมาย พร้อมเขียนหัวตารางถ้ายังไม่มี */
-function getOrCreateSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(buildHeader_());
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
-}
-
-function buildHeader_() {
-  const base = ['Timestamp', 'Email', 'คำนำหน้า', 'ชื่อ-นามสกุล', 'ตำแหน่ง/ระดับการศึกษา', 'โรงเรียน/มหาวิทยาลัย', 'วันที่ประเมิน', 'ลิงก์รูปผลลัพธ์'];
-  const scoreHeaders = [];
-  DOMAINS.forEach(function (d) {
-    for (let i = 1; i <= d.count; i++) {
-      scoreHeaders.push(d.label + ' ข้อ ' + i);
-    }
-  });
-  const totalsHeaders = DOMAINS.map(function (d) { return 'รวม: ' + d.label; });
-  return base.concat(scoreHeaders).concat(totalsHeaders);
-}
-
-/** แปลง payload จากฟอร์มให้เป็นแถวข้อมูลตามลำดับหัวตาราง */
-function buildRow_(data, imageUrl) {
-  const base = [
-    new Date(),
-    data.email || '',
-    data.prefix || '',
-    data.name || '',
-    data.position || '',
-    data.school || '',
-    data.assessDate || '',
-    imageUrl || ''
   ];
 
-  const scoreCells = [];
-  const totals = [];
-  DOMAINS.forEach(function (d) {
-    let sum = 0;
-    for (let i = 1; i <= d.count; i++) {
-      const key = d.key + '_' + i;
-      const val = (data.scores && data.scores[key] != null) ? Number(data.scores[key]) : '';
-      scoreCells.push(val);
-      sum += Number(val) || 0;
-    }
-    totals.push(sum);
+  var domainsEl = root.querySelector('#fsdDomains');
+  var navPillsEl = root.querySelector('#fsdNavPills');
+  var progressFillEl = null, progressPctEl = null;
+
+  // ---- build sticky progress bar (outside .fsd-root scroll would be nicer, but keep inside for artifact scope) ----
+  var progressShell = document.createElement('div');
+  progressShell.className = 'fsd-progress-shell';
+  progressShell.innerHTML =
+    '<div class="fsd-progress-row">' +
+      '<div class="fsd-progress-track"><div class="fsd-progress-fill" id="fsdProgressFill"></div></div>' +
+      '<div class="fsd-progress-pct" id="fsdProgressPct">0%</div>' +
+    '</div>';
+  root.insertBefore(progressShell, root.querySelector('.fsd-inner'));
+  progressFillEl = progressShell.querySelector('#fsdProgressFill');
+  progressPctEl = progressShell.querySelector('#fsdProgressPct');
+
+  // ---- nav pills ----
+  DOMAINS.forEach(function(d){
+    var pill = document.createElement('a');
+    pill.href = '#sec-' + d.key;
+    pill.className = 'fsd-navpill';
+    pill.id = 'pill-' + d.key;
+    pill.textContent = d.tag;
+    pill.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var target = root.querySelector('#sec-' + d.key);
+      if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+    navPillsEl.appendChild(pill);
   });
 
-  return base.concat(scoreCells).concat(totals);
-}
+  // ---- build domain sections ----
+  DOMAINS.forEach(function(d){
+    var section = document.createElement('div');
+    section.className = 'fsd-card';
+    section.id = 'sec-' + d.key;
+    section.style.setProperty('color', d.color);
 
-/** ====== ตัวช่วยทดสอบ: เรียกจากตัวแก้ไขสคริปต์ได้โดยตรง (ไม่ต้องผ่านฟอร์มจริง) ====== */
-function testDoPost() {
-  const fakeScores = {};
-  DOMAINS.forEach(function (d) {
-    for (let i = 1; i <= d.count; i++) {
-      fakeScores[d.key + '_' + i] = Math.ceil(Math.random() * 5);
+    var node = document.createElement('div');
+    node.className = 'fsd-node';
+    node.id = 'node-' + d.key;
+    node.style.borderColor = d.color;
+    section.appendChild(node);
+
+    var h2 = document.createElement('h2');
+    h2.innerHTML = '<span class="fsd-domain-tag" style="color:'+d.color+'">'+d.tag+'</span> ' + d.label;
+    section.appendChild(h2);
+
+    var sub = document.createElement('div');
+    sub.className = 'fsd-card-sub';
+    sub.textContent = 'ทำเครื่องหมายในช่องที่ตรงกับตัวเองมากที่สุด (1 = น้อยที่สุด, 5 = มากที่สุด)';
+    section.appendChild(sub);
+
+    var head = document.createElement('div');
+    head.className = 'fsd-likert-head';
+    head.innerHTML = '<div></div><div class="fsd-scale-labels"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>';
+    section.appendChild(head);
+
+    d.items.forEach(function(text, i){
+      var qKey = d.key + '_' + (i+1);
+      var row = document.createElement('div');
+      row.className = 'fsd-litem';
+
+      var textEl = document.createElement('div');
+      textEl.className = 'fsd-litem-text';
+      textEl.innerHTML = '<span class="qnum">'+(i+1)+'.</span>' + text;
+      row.appendChild(textEl);
+
+      var scale = document.createElement('div');
+      scale.className = 'fsd-scale';
+      for(var v=1; v<=5; v++){
+        var lbl = document.createElement('label');
+        lbl.className = 'fsd-radio';
+        lbl.innerHTML = '<input type="radio" name="'+qKey+'" value="'+v+'" required><span>'+v+'</span>';
+        scale.appendChild(lbl);
+      }
+      row.appendChild(scale);
+      section.appendChild(row);
+    });
+
+    domainsEl.appendChild(section);
+  });
+
+  // ---- radio visual state + progress tracking ----
+  var allRadioNames = [];
+  DOMAINS.forEach(function(d){ d.items.forEach(function(_,i){ allRadioNames.push(d.key+'_'+(i+1)); }); });
+
+  root.addEventListener('change', function(e){
+    if(e.target.matches('input[type="radio"]')){
+      var name = e.target.name;
+      root.querySelectorAll('.fsd-radio input[name="'+name+'"]').forEach(function(inp){
+        inp.closest('.fsd-radio').classList.toggle('checked', inp.checked);
+      });
+      updateProgress();
     }
   });
-  // 1x1 px placeholder JPEG — just to exercise the email-sending code path in testing.
-  // Replace with a real base64 JPEG (e.g. logged from the browser console) to preview the actual email.
-  const placeholderImageBase64 = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=';
 
-  const fakeEvent = {
-    postData: {
-      contents: JSON.stringify({
-        email: 'test@example.com',
-        prefix: 'นาย',
-        name: 'ทดสอบ ระบบ',
-        position: 'มัธยมศึกษาตอนปลาย',
-        school: 'โรงเรียนทดสอบ',
-        assessDate: new Date().toISOString().slice(0, 10),
-        scores: fakeScores,
-        resultImageBase64: placeholderImageBase64
-      })
-    }
+  root.querySelector('#f_prefix').addEventListener('change', function(){
+    var wrap = root.querySelector('#prefixOtherWrap');
+    if(this.value === 'อื่นๆ'){ wrap.classList.add('show'); }
+    else { wrap.classList.remove('show'); }
+  });
+
+  // ---- cute custom dropdown (คำนำหน้า) ----
+  (function(){
+    var dd = root.querySelector('#prefixDropdown');
+    var btn = root.querySelector('#prefixDropdownBtn');
+    var menu = root.querySelector('#prefixDropdownMenu');
+    var textEl = root.querySelector('#prefixDropdownText');
+    var emojiEl = root.querySelector('#prefixDropdownEmoji');
+    var hiddenInput = root.querySelector('#f_prefix');
+    var items = Array.prototype.slice.call(root.querySelectorAll('.fsd-cutedd-item'));
+
+    function closeMenu(){ dd.classList.remove('open'); }
+    function openMenu(){ dd.classList.add('open'); }
+
+    btn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      dd.classList.contains('open') ? closeMenu() : openMenu();
+    });
+
+    items.forEach(function(item){
+      item.addEventListener('click', function(){
+        var value = item.getAttribute('data-value');
+        var emoji = item.getAttribute('data-emoji');
+        var labelEl = item.querySelector('.fsd-cutedd-item-label');
+        var label = labelEl ? labelEl.textContent.trim() : value;
+
+        items.forEach(function(i){ i.classList.remove('selected'); });
+        item.classList.add('selected');
+
+        textEl.textContent = label;
+        emojiEl.textContent = emoji;
+        dd.classList.add('has-value');
+        btn.classList.remove('fsd-cutedd-error');
+
+        hiddenInput.value = value;
+        hiddenInput.dispatchEvent(new Event('change', {bubbles:true}));
+
+        closeMenu();
+      });
+    });
+
+    document.addEventListener('click', function(ev){
+      if(!dd.contains(ev.target)) closeMenu();
+    });
+    document.addEventListener('keydown', function(ev){
+      if(ev.key === 'Escape') closeMenu();
+    });
+  })();
+
+  function updateProgress(){
+    var answered = 0;
+    allRadioNames.forEach(function(name){
+      if(root.querySelector('input[name="'+name+'"]:checked')) answered++;
+    });
+    var pct = Math.round((answered / allRadioNames.length) * 100);
+    progressFillEl.style.width = pct + '%';
+    progressPctEl.textContent = pct + '%';
+
+    DOMAINS.forEach(function(d){
+      var domainAnswered = d.items.every(function(_,i){
+        return root.querySelector('input[name="'+d.key+'_'+(i+1)+'"]:checked');
+      });
+      var pill = root.querySelector('#pill-'+d.key);
+      var node = root.querySelector('#node-'+d.key);
+      if(pill) pill.classList.toggle('done', domainAnswered);
+      if(node) node.classList.toggle('node-done', domainAnswered);
+    });
+  }
+
+  // default today's date
+  var todayStr = new Date().toISOString().slice(0,10);
+  root.querySelector('#f_date').value = todayStr;
+
+  // ---- submit ----
+  var formEl = root.querySelector('#fsdForm');
+  var statusEl = root.querySelector('#fsdStatus');
+  var submitBtn = root.querySelector('#fsdSubmitBtn');
+
+  // ---- status card (shown after submit) ----
+  var ADVICE = {
+    digital:    {careers:'Software Developer, Data Analyst, AI Specialist, Cybersecurity Analyst', study:'วิศวกรรมคอมพิวเตอร์ วิทยาการคอมพิวเตอร์ หรือเทคโนโลยีสารสนเทศ', action:'ลงคอร์สเขียนโค้ดออนไลน์ (Python/Scratch) แล้วทำโปรเจกต์เล็ก ๆ เก็บเป็นพอร์ตโฟลิโอ'},
+    automation: {careers:'Robotics Engineer, Automation Technician, R&D Engineer', study:'วิศวกรรมหุ่นยนต์และระบบอัตโนมัติ หรือวิศวกรรมเมคคาทรอนิกส์', action:'เข้าร่วมชมรม/ค่ายหุ่นยนต์ และลองแข่งขันหุ่นยนต์ระดับโรงเรียนหรือเขตพื้นที่'},
+    green:      {careers:'Sustainability Consultant, Energy Analyst, Environmental Engineer', study:'วิศวกรรมสิ่งแวดล้อม หรือเทคโนโลยีพลังงาน', action:'ลองทำโปรเจกต์คำนวณคาร์บอนฟุตพริ้นท์ของโรงเรียนหรือครอบครัวตัวเอง'},
+    electrical: {careers:'ช่างไฟฟ้า วิศวกรไฟฟ้า ผู้ตรวจสอบระบบไฟฟ้า', study:'วิศวกรรมไฟฟ้า หรือช่างไฟฟ้ากำลัง', action:'ฝึกปฏิบัติต่อวงจรไฟฟ้าจริงในห้องแล็บภายใต้การดูแลของครูผู้เชี่ยวชาญ'},
+    computer:   {careers:'วิศวกรคอมพิวเตอร์ นักพัฒนาระบบฝังตัว Firmware Engineer', study:'วิศวกรรมคอมพิวเตอร์', action:'ลองต่อบอร์ด Raspberry Pi หรือ Arduino ทำโปรเจกต์ IoT เล็ก ๆ'},
+    softskill:  {careers:'Project Coordinator, Team Lead, HR/People Development, ตำแหน่งที่ต้องประสานงานทุกสายอาชีพ', study:'ทุกสาขาที่มีวิชาโครงงาน/ทำงานเป็นทีม หรือกิจกรรมนักศึกษาด้านผู้นำ', action:'ลองเป็นหัวหน้ากลุ่ม/หัวหน้าโครงงานสักครั้ง หรือเข้าร่วมชมรมที่ต้องทำงานร่วมกับคนอื่นเป็นประจำ'}
   };
-  const result = doPost(fakeEvent);
-  Logger.log(result.getContent());
-}
+
+  var LEVEL_DESC = {
+    'ดีเยี่ยม':          'มีความพร้อมสูงในหลายด้าน สามารถเลือกต่อยอดสู่สายอาชีพเฉพาะทางที่สนใจได้ทันที และควรพิจารณาโครงการหรือการแข่งขันที่ท้าทายมากขึ้น',
+    'ดี':                'มีพื้นฐานที่ดีในหลายด้าน ควรเลือกโฟกัสด้านที่มีคะแนนสูงสุด 2–3 ด้านเพื่อพัฒนาให้ลึกและเชี่ยวชาญยิ่งขึ้น',
+    'ปานกลาง':          'มีพื้นฐานพอใช้ ควรฝึกฝนเพิ่มเติมอย่างสม่ำเสมอ โดยเริ่มจากด้านที่มีคะแนนสูงสุดก่อนเพื่อสร้างความมั่นใจ',
+    'ควรพัฒนา':          'ควรได้รับการอบรมและฝึกปฏิบัติเพิ่มเติมในหลายด้าน แนะนำให้เริ่มจากด้านที่สนใจมากที่สุดแล้วค่อย ๆ ขยายไปด้านอื่น',
+    'ควรพัฒนาเร่งด่วน': 'ควรได้รับการพัฒนาพื้นฐานอย่างเร่งด่วน แนะนำให้เข้าร่วมกิจกรรมเสริมทักษะพื้นฐานและขอคำปรึกษาจากครูผู้สอนอย่างใกล้ชิด'
+  };
+
+  function levelInfo(pct){
+    if(pct >= 81) return {text:'ดีเยี่ยม', color:'#10b981'};
+    if(pct >= 61) return {text:'ดี', color:'#8b5cf6'};
+    if(pct >= 41) return {text:'ปานกลาง', color:'#f59e0b'};
+    if(pct >= 21) return {text:'ควรพัฒนา', color:'#f97316'};
+    return {text:'ควรพัฒนาเร่งด่วน', color:'#ef4444'};
+  }
+
+  function computeDomainScores(payload){
+    return DOMAINS.map(function(d){
+      var sum = 0;
+      d.items.forEach(function(_, i){ sum += Number(payload.scores[d.key+'_'+(i+1)]) || 0; });
+      return { key:d.key, label:d.label, tag:d.tag, color:d.color, max:d.items.length*5, score:sum };
+    });
+  }
+
+  function polarPoint(cx, cy, r, angleDeg){
+    var rad = (angleDeg - 90) * Math.PI / 180;
+    return {x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad)};
+  }
+
+  function buildScBars(scores){
+    var el = root.querySelector('#fsdScBars');
+    el.innerHTML = scores.map(function(s){
+      var pct = Math.max(0, Math.min(100, (s.score/s.max)*100));
+      return '<div class="fsd-sc-row">'+
+        '<span class="fsd-sc-label">'+s.label+'</span>'+
+        '<span class="fsd-sc-value">'+s.score+'/'+s.max+'</span>'+
+        '<div class="fsd-sc-track"><div class="fsd-sc-fill" style="width:'+pct+'%;background:'+s.color+';box-shadow:0 0 8px '+s.color+'99;"></div></div>'+
+      '</div>';
+    }).join('');
+
+    var rawScore = scores.reduce(function(a,s){return a+s.score;},0);
+    var rawMax = scores.reduce(function(a,s){return a+s.max;},0);
+    root.querySelector('#fsdScTotal').innerHTML = '<span>TOTAL</span><span>'+rawScore+' / '+rawMax+'</span>';
+  }
+
+  function buildScRadar(scores){
+    var n = scores.length, cx=190, cy=190, maxR=130, step=360/n;
+    var svgParts = [];
+
+    [0.25,0.5,0.75,1].forEach(function(f){
+      var pts = [];
+      for(var i=0;i<n;i++){ var p=polarPoint(cx,cy,maxR*f,i*step); pts.push(p.x.toFixed(1)+','+p.y.toFixed(1)); }
+      svgParts.push('<polygon points="'+pts.join(' ')+'" fill="none" stroke="rgba(120,100,160,'+(f===1?0.35:0.16)+')" stroke-width="1"/>');
+    });
+    for(var i=0;i<n;i++){
+      var p = polarPoint(cx,cy,maxR,i*step);
+      svgParts.push('<line x1="'+cx+'" y1="'+cy+'" x2="'+p.x.toFixed(1)+'" y2="'+p.y.toFixed(1)+'" stroke="rgba(120,100,160,0.16)" stroke-width="1"/>');
+    }
+
+    var dataPts = [], dots = [];
+    scores.forEach(function(s,i){
+      var pct = Math.max(0, Math.min(100, (s.score/s.max)*100));
+      var p = polarPoint(cx,cy, maxR*(pct/100), i*step);
+      dataPts.push(p.x.toFixed(1)+','+p.y.toFixed(1));
+      dots.push('<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="4" fill="'+s.color+'" stroke="#f4f0fc" stroke-width="1.5"/>');
+    });
+    svgParts.push('<polygon points="'+dataPts.join(' ')+'" fill="rgba(139,92,246,0.20)" stroke="#8b5cf6" stroke-width="2"/>');
+    svgParts.push(dots.join(''));
+
+    scores.forEach(function(s,i){
+      var ang = i*step;
+      var lp = polarPoint(cx,cy,maxR+22,ang);
+      var vp = polarPoint(cx,cy,maxR+37,ang);
+      var nx = Math.cos((ang-90)*Math.PI/180);
+      var anchor = Math.abs(nx) < 0.35 ? 'middle' : (nx > 0 ? 'start' : 'end');
+      svgParts.push('<text x="'+lp.x.toFixed(1)+'" y="'+lp.y.toFixed(1)+'" fill="'+s.color+'" font-size="10.5" font-weight="700" text-anchor="'+anchor+'" font-family="Space Mono,monospace">'+s.tag+'</text>');
+      svgParts.push('<text x="'+vp.x.toFixed(1)+'" y="'+vp.y.toFixed(1)+'" fill="#362a4d" font-size="11" font-weight="600" text-anchor="'+anchor+'" font-family="Space Mono,monospace">'+s.score+'/'+s.max+'</text>');
+    });
+
+    root.querySelector('#fsdRadarSvg').innerHTML = svgParts.join('');
+  }
+
+  function buildScAdvice(scores){
+    var rawScore = scores.reduce(function(a,s){return a+s.score;},0);
+    var rawMax = scores.reduce(function(a,s){return a+s.max;},0);
+    var pct = (rawScore/rawMax)*100;
+    var lvl = levelInfo(pct);
+
+    var ranked = scores.slice().sort(function(a,b){ return (b.score/b.max) - (a.score/a.max); });
+    var top = ranked.slice(0,3);
+    var names = top.map(function(s){ return s.label; });
+    var namesText = names.length > 1 ? names.slice(0,-1).join(', ') + ' และ' + names.slice(-1) : names.join('');
+
+    var summary = '<div class="fsd-sc-summary"><b>สรุปภาพรวม ('+pct.toFixed(0)+'%):</b> จุดแข็งโดดเด่นด้าน <b>'+namesText+'</b> — '+(LEVEL_DESC[lvl.text]||'')+'</div>';
+
+    var items = top.map(function(s){
+      var adv = ADVICE[s.key] || {};
+      var scorePct = ((s.score/s.max)*100).toFixed(0);
+      return '<div class="fsd-sc-item">'+
+        '<div class="fsd-sc-item-head" style="color:'+s.color+'">'+s.label+' <span class="pct">('+scorePct+'%)</span></div>'+
+        (adv.careers ? '<div class="fsd-sc-sub">🎯 <b>สายอาชีพที่เหมาะสม:</b> '+adv.careers+'</div>' : '')+
+        (adv.study   ? '<div class="fsd-sc-sub">📚 <b>ต่อยอดสาย:</b> '+adv.study+'</div>' : '')+
+        (adv.action  ? '<div class="fsd-sc-sub">✅ <b>ลงมือทำต่อได้เลย:</b> '+adv.action+'</div>' : '')+
+      '</div>';
+    }).join('');
+
+    root.querySelector('#fsdScAdvice').innerHTML = summary + items;
+  }
+
+  function renderResultsContent(payload){
+    var scores = computeDomainScores(payload);
+    buildScBars(scores);
+    buildScRadar(scores);
+    buildScAdvice(scores);
+
+    var displayName = (payload.prefix ? payload.prefix + ' ' : '') + payload.name;
+    root.querySelector('#fsdResultsTitle').textContent = 'สเตตัสทักษะของ ' + (displayName || 'คุณ');
+    root.querySelector('#fsdResultsSub').textContent = [payload.school, payload.assessDate].filter(Boolean).join(' · ');
+
+    return scores;
+  }
+
+  function revealResultsView(){
+    root.querySelector('.fsd-hero').style.display = 'none';
+    navPillsEl.style.display = 'none';
+    progressShell.style.display = 'none';
+    formEl.style.display = 'none';
+    root.querySelector('#fsdResults').classList.add('show');
+    root.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  // capture the status card as a JPEG image (base64, no prefix) so it can be
+  // emailed to the person who filled out the form — returns a Promise<string>
+  function captureResultsImage(){
+    var el = root.querySelector('#fsdResults');
+    if(typeof html2canvas !== 'function'){ return Promise.resolve(''); }
+    return html2canvas(el, { backgroundColor:'#f4f0fc', scale:1.5, useCORS:true })
+      .then(function(canvas){
+        return canvas.toDataURL('image/jpeg', 0.85).split(',')[1] || '';
+      })
+      .catch(function(){ return ''; });
+  }
+
+  root.querySelector('#fsdRestartBtn').addEventListener('click', function(){
+    location.reload();
+  });
+
+  formEl.addEventListener('submit', function(e){
+    e.preventDefault();
+
+    var prefix = root.querySelector('#f_prefix').value;
+
+    if(!formEl.reportValidity() || !prefix){
+      statusEl.className = 'fsd-status err';
+      statusEl.textContent = 'กรุณากรอกข้อมูลและตอบคำถามให้ครบทุกข้อก่อนส่ง';
+      if(!prefix){
+        var ddBtn = root.querySelector('#prefixDropdownBtn');
+        ddBtn.classList.remove('fsd-cutedd-error');
+        void ddBtn.offsetWidth;
+        ddBtn.classList.add('fsd-cutedd-error');
+      }
+      return;
+    }
+
+    if(prefix === 'อื่นๆ'){
+      var other = root.querySelector('#f_prefix_other').value.trim();
+      if(other) prefix = other;
+    }
+
+    var payload = {
+      email: root.querySelector('#f_email').value.trim(),
+      prefix: prefix,
+      name: root.querySelector('#f_name').value.trim(),
+      position: root.querySelector('#f_position').value.trim(),
+      school: root.querySelector('#f_school').value.trim(),
+      assessDate: root.querySelector('#f_date').value,
+      scores: {}
+    };
+
+    DOMAINS.forEach(function(d){
+      d.items.forEach(function(_, i){
+        var name = d.key + '_' + (i+1);
+        var checked = root.querySelector('input[name="'+name+'"]:checked');
+        payload.scores[name] = checked ? Number(checked.value) : null;
+      });
+    });
+
+    submitBtn.disabled = true;
+    statusEl.className = 'fsd-status pending';
+    statusEl.textContent = 'กำลังสร้างผลลัพธ์...';
+
+    // build + reveal the status card first so html2canvas has something to capture
+    renderResultsContent(payload);
+    root.querySelector('#fsdResults').classList.add('show');
+
+    captureResultsImage().then(function(imageBase64){
+      payload.resultImageBase64 = imageBase64;
+
+      if(WEB_APP_URL.indexOf('PASTE_YOUR') === 0){
+        statusEl.className = 'fsd-status err';
+        statusEl.textContent = 'ยังไม่ได้ตั้งค่า WEB_APP_URL ในโค้ด — ผลด้านล่างเป็นโหมดทดสอบเท่านั้น ยังไม่ถูกบันทึกลง Sheet หรือส่งอีเมล';
+        console.log('Payload ที่จะส่ง (ตัวอย่าง มีรูปผลลัพธ์:', !!imageBase64, ')');
+        revealResultsView();
+        return;
+      }
+
+      statusEl.textContent = 'กำลังส่งข้อมูลและอีเมลผลลัพธ์...';
+
+      fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify(payload) })
+        .then(function(res){ return res.json(); })
+        .then(function(data){
+          statusEl.className = 'fsd-status ok';
+          statusEl.textContent = payload.email
+            ? 'ส่งแบบประเมินสำเร็จ — ระบบได้ส่งภาพผลลัพธ์ไปที่อีเมลของคุณแล้ว ตรวจสอบได้ภายหลัง'
+            : 'ส่งแบบประเมินสำเร็จ ขอบคุณที่เข้าร่วมประเมิน';
+          submitBtn.textContent = 'ส่งแล้ว';
+          revealResultsView();
+        })
+        .catch(function(err){
+          statusEl.className = 'fsd-status err';
+          statusEl.textContent = 'ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+          submitBtn.disabled = false;
+          root.querySelector('#fsdResults').classList.remove('show');
+        });
+    });
+  });
+
+  updateProgress();
+})();
+</script>
+
+</body>
+</html>
